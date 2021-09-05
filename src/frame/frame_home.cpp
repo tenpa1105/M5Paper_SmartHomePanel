@@ -2,6 +2,7 @@
 #include <HTTPClient.h>
 
 HTTPClient http;
+EPDGUI_Switch *cur_sw_air;
 
 struct _ac_ctrl{
  String mode;
@@ -49,7 +50,7 @@ void Frame_Home::InitSwitch(EPDGUI_Switch* sw, String title, String subtitle, co
     sw->Canvas(1)->pushImage(68, 20, 92, 92, img2);
 }
 
-void air_control(EPDGUI_Switch &sw, String mode, int temp)
+void ac_control(EPDGUI_Switch &sw, String mode, int temp)
 {
     String maker = "";
     String ipaddr = "";
@@ -109,7 +110,7 @@ void key_home_air_adjust_cb(epdgui_args_vector_t &args)
     {
         temp--;
     }
-    air_control(*sw, ac_ctrl_current[loc].mode, (uint8_t)temp);
+    ac_control(*sw, ac_ctrl_current[loc].mode, (uint8_t)temp);
     display_ac_status(*sw, loc, temp);
 }
 
@@ -120,9 +121,31 @@ void key_home_air_state0_cb(epdgui_args_vector_t &args)
     EPDGUI_Button *b2 = ((EPDGUI_Button*)(args[1]));
     EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
     String loc = sw->GetCustomString();
-    air_control(*sw, "off", ac_ctrl_current[loc].temp);
+    ac_control(*sw, "off", ac_ctrl_current[loc].temp);
     b1->SetEnable(false);
     b2->SetEnable(false);
+}
+bool check_long_press()
+{
+    bool is_finger_up;
+    static unsigned long press_start_time = 0;
+    static bool prev_is_finger_up = true;
+    if (M5.TP.avaliable()){
+        M5.TP.update();
+        is_finger_up = M5.TP.isFingerUp();
+        if (!is_finger_up){
+            if (prev_is_finger_up != is_finger_up){
+                press_start_time = millis();
+                // Serial.printf("press_start_time =%d\n", press_start_time);
+            }
+            if (millis()-press_start_time > 1200){
+                // Serial.printf("long press time! %d\n", millis());
+                return true;
+            }
+        }
+        prev_is_finger_up = is_finger_up;
+    }
+    return false;
 }
 void key_home_air_state1_cb(epdgui_args_vector_t &args)
 {
@@ -130,7 +153,9 @@ void key_home_air_state1_cb(epdgui_args_vector_t &args)
     EPDGUI_Button *b2 = ((EPDGUI_Button*)(args[1]));
     EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
     String loc = sw->GetCustomString();
-    air_control(*sw, "cool", ac_ctrl_current[loc].temp);
+    cur_sw_air = sw;
+
+    ac_control(*sw, "cool", ac_ctrl_current[loc].temp);
     display_ac_status(*sw, loc, ac_ctrl_current[loc].temp);
 
     b1->SetEnable(true);
@@ -143,7 +168,9 @@ void key_home_air_state2_cb(epdgui_args_vector_t &args)
     EPDGUI_Button *b2 = ((EPDGUI_Button*)(args[1]));
     EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
     String loc = sw->GetCustomString();
-    air_control(*sw, "dry", ac_ctrl_current[loc].temp);
+    cur_sw_air = sw;
+
+    ac_control(*sw, "dry", ac_ctrl_current[loc].temp);
     display_ac_status(*sw, loc, ac_ctrl_current[loc].temp);
 
     b1->SetEnable(true);
@@ -156,11 +183,14 @@ void key_home_air_state3_cb(epdgui_args_vector_t &args)
     EPDGUI_Button *b2 = ((EPDGUI_Button*)(args[1]));
     EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
     String loc = sw->GetCustomString();
-    air_control(*sw, "heat", ac_ctrl_current[loc].temp);
+    cur_sw_air = sw;
+
+    ac_control(*sw, "heat", ac_ctrl_current[loc].temp);
     display_ac_status(*sw, loc, ac_ctrl_current[loc].temp);
 
     b1->SetEnable(true);
     b2->SetEnable(true);
+    sw->setState(0);
 }
 
 
@@ -168,6 +198,7 @@ Frame_Home::Frame_Home(void)
 {
     _frame_name = "Frame_Home";
 
+    cur_sw_air = NULL;
     _sw_light1       = new EPDGUI_Switch(2, 20, 44 + 72, 228, 228);
     _sw_light2       = new EPDGUI_Switch(2, 20, 324 + 72, 228, 228);
     _sw_light3       = new EPDGUI_Switch(2, 20, 604 + 72, 228, 228);
@@ -187,7 +218,7 @@ Frame_Home::Frame_Home(void)
     _key_air_2_minus->SetCustomString("0");
     _key_air_3_plus ->SetCustomString("1");
     _key_air_3_minus->SetCustomString("0");
-
+    
     _key_air_1_plus->AddArgs(EPDGUI_Button::EVENT_RELEASED, 0, _key_air_1_plus);
     _key_air_1_plus->AddArgs(EPDGUI_Button::EVENT_RELEASED, 1, _sw_air_1);
     _key_air_1_plus->Bind(EPDGUI_Button::EVENT_RELEASED, key_home_air_adjust_cb);
@@ -486,4 +517,15 @@ int Frame_Home::init(epdgui_args_vector_t &args)
         }
     }
     return 3;
+}
+
+int Frame_Home::run()
+{
+    if (check_long_press()){
+        if (cur_sw_air){
+            cur_sw_air->setState(3);
+            cur_sw_air->UpdateState(-1,-1);
+        }
+    }
+    return 1;
 }

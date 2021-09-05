@@ -9,6 +9,7 @@ class Frame_Home : public Frame_Base
 public:
     Frame_Home();
     ~Frame_Home();
+    int run();
     int init(epdgui_args_vector_t &args);
     void InitSwitch(EPDGUI_Switch* sw, String title, String subtitle, const uint8_t *img1, const uint8_t *img2);
 private:
