@@ -66,18 +66,18 @@ void ac_control(EPDGUI_Switch &sw, String mode, int temp)
         if (ac_ctrl_current[found_loc].mode == mode){
             return;
         }
-        // http.begin("http://"+ ipaddr + "/ac_off?maker=" + maker);
-        // http.GET();
-        // http.end();     
+        http.begin("http://"+ ipaddr + "/ac_off?maker=" + maker);
+        http.GET();
+        http.end();     
         Serial.printf("%s ac_off maker(%s)\n", found_loc.c_str(), maker.c_str());
         ac_ctrl_current[found_loc].mode = mode;
         return;
     }
     ac_ctrl_current[found_loc].mode = mode;
     ac_ctrl_current[found_loc].temp = temp;
-    // http.begin("http://" + ipaddr + "/ac_on?maker=" + maker + "&mode=" + ac_ctrl_current[found_loc].mode + "&temp=" + ac_ctrl_current[found_loc].temp +"&fan=" + ac_ctrl_current[found_loc].fan );
-    // http.GET();
-    // http.end();
+    http.begin("http://" + ipaddr + "/ac_on?maker=" + maker + "&mode=" + ac_ctrl_current[found_loc].mode + "&temp=" + ac_ctrl_current[found_loc].temp +"&fan=" + ac_ctrl_current[found_loc].fan );
+    http.GET();
+    http.end();
     Serial.printf("%s ac_on maker(%s) mode(%s) temp(%d) fan(%s)\n", found_loc.c_str(), maker.c_str(), ac_ctrl_current[found_loc].mode.c_str(), ac_ctrl_current[found_loc].temp, ac_ctrl_current[found_loc].fan.c_str() );
 }
 
@@ -118,14 +118,14 @@ bool check_long_press()
 {
     bool is_finger_up=false;
     unsigned long press_start_time = millis();
-    Serial.printf("check_long_press >>> \n");
+    // Serial.printf("check_long_press >>> \n");
     do{
         if (M5.TP.avaliable()){
             M5.TP.update();
             is_finger_up = M5.TP.isFingerUp();
             if (!is_finger_up){
                 if (millis()-press_start_time > 1000){
-                    Serial.printf("long press time! %d\n", millis());
+                    // Serial.printf("long press time! %d\n", millis());
                     break;
                 }
             }
@@ -133,7 +133,7 @@ bool check_long_press()
         delay(20);
     }while(!is_finger_up);
 
-    Serial.printf("<<< check_long_press\n");
+    // Serial.printf("<<< check_long_press\n");
     return !is_finger_up;
 }
 
