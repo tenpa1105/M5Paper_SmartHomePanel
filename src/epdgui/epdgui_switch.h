@@ -18,8 +18,10 @@ public:
     ~EPDGUI_Switch();
     void Draw(m5epd_update_mode_t mode = UPDATE_MODE_DU4);
     void Draw(M5EPD_Canvas* canvas);
+    void Bind(int16_t event, int16_t state, void (* func_cb)(epdgui_args_vector_t&));
     void Bind(int16_t state, void (* func_cb)(epdgui_args_vector_t&));
     void UpdateState(int16_t x, int16_t y);
+    void AddArgs(int16_t event, int16_t state, uint16_t n, void* arg);
     void AddArgs(int16_t state, uint16_t n, void* arg);
 
     int16_t getState(void);
@@ -29,8 +31,10 @@ public:
 
 private:
     int16_t _state_num;
-    void (*_func_cb_array[EPDGUI_SWITCH_MAX_STATE])(epdgui_args_vector_t &args) = {NULL};
-    epdgui_args_vector_t _func_cb_param_array[EPDGUI_SWITCH_MAX_STATE];
+    void (*_pressed_func_cb_array[EPDGUI_SWITCH_MAX_STATE])(epdgui_args_vector_t &args) = {NULL};
+    void (*_released_func_cb_array[EPDGUI_SWITCH_MAX_STATE])(epdgui_args_vector_t &args) = {NULL};
+    epdgui_args_vector_t _pressed_func_cb_param_array[EPDGUI_SWITCH_MAX_STATE];
+    epdgui_args_vector_t _released_func_cb_param_array[EPDGUI_SWITCH_MAX_STATE];
     int16_t _state = 0;
     int16_t _event = EVENT_NONE;
     String _label_array[EPDGUI_SWITCH_MAX_STATE];

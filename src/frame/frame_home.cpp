@@ -2,7 +2,6 @@
 #include <HTTPClient.h>
 
 HTTPClient http;
-EPDGUI_Switch *cur_sw_air;
 
 struct _ac_ctrl{
  String mode;
@@ -11,9 +10,9 @@ struct _ac_ctrl{
 };
 
 std::map<String, struct _ac_ctrl> ac_ctrl_init ={
-  {"liv", {"cool", 26, "med"} },
-  {"bed",  {"cool", 26, "med"} },
-  {"baby",  {"cool", 26, "med"} },
+  {"liv", {"off", 26, "med"} },
+  {"bed",  {"off", 26, "med"} },
+  {"baby",  {"off", 26, "med"} },
 };
 
 std::map<String, struct _ac_ctrl> ac_ctrl_current = ac_ctrl_init;
@@ -64,9 +63,14 @@ void ac_control(EPDGUI_Switch &sw, String mode, int temp)
         } 
     }
     if (mode == "off"){
+        if (ac_ctrl_current[found_loc].mode == mode){
+            return;
+        }
         // http.begin("http://"+ ipaddr + "/ac_off?maker=" + maker);
         // http.GET();
         // http.end();     
+        Serial.printf("%s ac_off maker(%s)\n", found_loc.c_str(), maker.c_str());
+        ac_ctrl_current[found_loc].mode = mode;
         return;
     }
     ac_ctrl_current[found_loc].mode = mode;
@@ -74,6 +78,7 @@ void ac_control(EPDGUI_Switch &sw, String mode, int temp)
     // http.begin("http://" + ipaddr + "/ac_on?maker=" + maker + "&mode=" + ac_ctrl_current[found_loc].mode + "&temp=" + ac_ctrl_current[found_loc].temp +"&fan=" + ac_ctrl_current[found_loc].fan );
     // http.GET();
     // http.end();
+    Serial.printf("%s ac_on maker(%s) mode(%s) temp(%d) fan(%s)\n", found_loc.c_str(), maker.c_str(), ac_ctrl_current[found_loc].mode.c_str(), ac_ctrl_current[found_loc].temp, ac_ctrl_current[found_loc].fan.c_str() );
 }
 
 void display_ac_status( EPDGUI_Switch &sw, String loc, int temp )
@@ -82,12 +87,11 @@ void display_ac_status( EPDGUI_Switch &sw, String loc, int temp )
     ac_ctrl_current[loc].temp = temp;
     sprintf(buf, "%s %d℃", ac_ctrl_current[loc].mode.c_str(), temp);
     int idx = ac_mode_to_canvas[ac_ctrl_current[loc].mode]; 
-    //Serial.printf("*** %s mode(%s) idx =%d\n", loc.c_str(), ac_ctrl_current[loc].mode.c_str(), idx);
+    Serial.printf("*** %s mode(%s) idx =%d temp=%d\n", loc.c_str(), ac_ctrl_current[loc].mode.c_str(), idx, temp);
     sw.Canvas(idx)->setTextSize(36);
     sw.Canvas(idx)->setTextDatum(TC_DATUM);
     sw.Canvas(idx)->fillRect(114 - 100, 108, 200, 38, 0);
     sw.Canvas(idx)->drawString(buf, 114, 108);
-    //sw.Canvas(idx)->drawString(ac_ctrl_current[loc].mode, 170, 92);
     sw.Canvas(idx)->pushCanvas(sw.getX(), sw.getY(), UPDATE_MODE_A2);
 }
 
@@ -97,10 +101,6 @@ void key_home_air_adjust_cb(epdgui_args_vector_t &args)
     int operation = ((EPDGUI_Button*)(args[0]))->GetCustomString().toInt();
     EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[1]));
     String loc = sw->GetCustomString();
-    if(sw->getState() == 0)
-    {
-        return;
-    }
     int temp = ac_ctrl_current[loc].temp;
     if(operation == 1)
     {
@@ -114,8 +114,40 @@ void key_home_air_adjust_cb(epdgui_args_vector_t &args)
     display_ac_status(*sw, loc, temp);
 }
 
+bool check_long_press()
+{
+    bool is_finger_up=false;
+    unsigned long press_start_time = millis();
+    Serial.printf("check_long_press >>> \n");
+    do{
+        if (M5.TP.avaliable()){
+            M5.TP.update();
+            is_finger_up = M5.TP.isFingerUp();
+            if (!is_finger_up){
+                if (millis()-press_start_time > 1000){
+                    Serial.printf("long press time! %d\n", millis());
+                    break;
+                }
+            }
+        }
+        delay(20);
+    }while(!is_finger_up);
 
-void key_home_air_state0_cb(epdgui_args_vector_t &args)
+    Serial.printf("<<< check_long_press\n");
+    return !is_finger_up;
+}
+
+
+void key_home_air_state0_pressed_cb(epdgui_args_vector_t &args)
+{
+    EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
+    if (check_long_press()){
+        sw->setState(3);
+        String loc = sw->GetCustomString();
+        ac_control(*sw, "off", ac_ctrl_current[loc].temp );
+    }
+}
+void key_home_air_state0_released_cb(epdgui_args_vector_t &args)
 {
     EPDGUI_Button *b1 = ((EPDGUI_Button*)(args[0]));
     EPDGUI_Button *b2 = ((EPDGUI_Button*)(args[1]));
@@ -125,35 +157,21 @@ void key_home_air_state0_cb(epdgui_args_vector_t &args)
     b1->SetEnable(false);
     b2->SetEnable(false);
 }
-bool check_long_press()
+void key_home_air_state1_pressed_cb(epdgui_args_vector_t &args)
 {
-    bool is_finger_up;
-    static unsigned long press_start_time = 0;
-    static bool prev_is_finger_up = true;
-    if (M5.TP.avaliable()){
-        M5.TP.update();
-        is_finger_up = M5.TP.isFingerUp();
-        if (!is_finger_up){
-            if (prev_is_finger_up != is_finger_up){
-                press_start_time = millis();
-                // Serial.printf("press_start_time =%d\n", press_start_time);
-            }
-            if (millis()-press_start_time > 1200){
-                // Serial.printf("long press time! %d\n", millis());
-                return true;
-            }
-        }
-        prev_is_finger_up = is_finger_up;
+    EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
+    if (check_long_press()){
+        sw->setState(3);
+        String loc = sw->GetCustomString();
+        ac_control(*sw, "off", ac_ctrl_current[loc].temp );
     }
-    return false;
 }
-void key_home_air_state1_cb(epdgui_args_vector_t &args)
+void key_home_air_state1_released_cb(epdgui_args_vector_t &args)
 {
     EPDGUI_Button *b1 = ((EPDGUI_Button*)(args[0]));
     EPDGUI_Button *b2 = ((EPDGUI_Button*)(args[1]));
     EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
     String loc = sw->GetCustomString();
-    cur_sw_air = sw;
 
     ac_control(*sw, "cool", ac_ctrl_current[loc].temp);
     display_ac_status(*sw, loc, ac_ctrl_current[loc].temp);
@@ -162,13 +180,21 @@ void key_home_air_state1_cb(epdgui_args_vector_t &args)
     b2->SetEnable(true);
 }
 
-void key_home_air_state2_cb(epdgui_args_vector_t &args)
+void key_home_air_state2_pressed_cb(epdgui_args_vector_t &args)
+{
+    EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
+    if (check_long_press()){
+        sw->setState(3);
+        String loc = sw->GetCustomString();
+        ac_control(*sw, "off", ac_ctrl_current[loc].temp );
+    }
+}
+void key_home_air_state2_released_cb(epdgui_args_vector_t &args)
 {
     EPDGUI_Button *b1 = ((EPDGUI_Button*)(args[0]));
     EPDGUI_Button *b2 = ((EPDGUI_Button*)(args[1]));
     EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
     String loc = sw->GetCustomString();
-    cur_sw_air = sw;
 
     ac_control(*sw, "dry", ac_ctrl_current[loc].temp);
     display_ac_status(*sw, loc, ac_ctrl_current[loc].temp);
@@ -177,13 +203,21 @@ void key_home_air_state2_cb(epdgui_args_vector_t &args)
     b2->SetEnable(true);
 }
 
-void key_home_air_state3_cb(epdgui_args_vector_t &args)
+void key_home_air_state3_pressed_cb(epdgui_args_vector_t &args)
+{
+    EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
+    if (check_long_press()){
+        sw->setState(3);
+        String loc = sw->GetCustomString();
+        ac_control(*sw, "off", ac_ctrl_current[loc].temp );
+    }
+}
+void key_home_air_state3_released_cb(epdgui_args_vector_t &args)
 {
     EPDGUI_Button *b1 = ((EPDGUI_Button*)(args[0]));
     EPDGUI_Button *b2 = ((EPDGUI_Button*)(args[1]));
     EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[2]));
     String loc = sw->GetCustomString();
-    cur_sw_air = sw;
 
     ac_control(*sw, "heat", ac_ctrl_current[loc].temp);
     display_ac_status(*sw, loc, ac_ctrl_current[loc].temp);
@@ -198,7 +232,6 @@ Frame_Home::Frame_Home(void)
 {
     _frame_name = "Frame_Home";
 
-    cur_sw_air = NULL;
     _sw_light1       = new EPDGUI_Switch(2, 20, 44 + 72, 228, 228);
     _sw_light2       = new EPDGUI_Switch(2, 20, 324 + 72, 228, 228);
     _sw_light3       = new EPDGUI_Switch(2, 20, 604 + 72, 228, 228);
@@ -401,56 +434,104 @@ Frame_Home::Frame_Home(void)
     _sw_air_3->Canvas(2)->pushImage(68, 12, 92, 92, ImageResource_home_icon_conditioner_on_92x92);
     _sw_air_3->Canvas(3)->pushImage(68, 12, 92, 92, ImageResource_home_icon_conditioner_on_92x92);
 
-    _sw_air_1->AddArgs(0, 0, _key_air_1_plus);
-    _sw_air_1->AddArgs(0, 1, _key_air_1_minus);
-    _sw_air_1->AddArgs(0, 2, _sw_air_1);
-    _sw_air_1->Bind(0, key_home_air_state0_cb);
-    _sw_air_1->AddArgs(1, 0, _key_air_1_plus);
-    _sw_air_1->AddArgs(1, 1, _key_air_1_minus);
-    _sw_air_1->AddArgs(1, 2, _sw_air_1);
-    _sw_air_1->Bind(1, key_home_air_state1_cb);
-    _sw_air_1->AddArgs(2, 0, _key_air_1_plus);
-    _sw_air_1->AddArgs(2, 1, _key_air_1_minus);
-    _sw_air_1->AddArgs(2, 2, _sw_air_1);
-    _sw_air_1->Bind(2, key_home_air_state2_cb);
-    _sw_air_1->AddArgs(3, 0, _key_air_1_plus);
-    _sw_air_1->AddArgs(3, 1, _key_air_1_minus);
-    _sw_air_1->AddArgs(3, 2, _sw_air_1);
-    _sw_air_1->Bind(3, key_home_air_state3_cb);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 0, 0, _key_air_1_plus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 0, 1, _key_air_1_minus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 0, 2, _sw_air_1);
+    _sw_air_1->Bind(EPDGUI_Switch::EVENT_RELEASED, 0, key_home_air_state0_released_cb);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 0, 0, _key_air_1_plus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 0, 1, _key_air_1_minus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 0, 2, _sw_air_1);
+    _sw_air_1->Bind(EPDGUI_Switch::EVENT_PRESSED, 0, key_home_air_state0_pressed_cb);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 1, 0, _key_air_1_plus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 1, 1, _key_air_1_minus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 1, 2, _sw_air_1);
+    _sw_air_1->Bind(EPDGUI_Switch::EVENT_RELEASED, 1, key_home_air_state1_released_cb);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 1, 0, _key_air_1_plus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 1, 1, _key_air_1_minus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 1, 2, _sw_air_1);
+    _sw_air_1->Bind(EPDGUI_Switch::EVENT_PRESSED, 1, key_home_air_state1_pressed_cb);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 2, 0, _key_air_1_plus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 2, 1, _key_air_1_minus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 2, 2, _sw_air_1);
+    _sw_air_1->Bind(EPDGUI_Switch::EVENT_RELEASED, 2, key_home_air_state2_released_cb);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 2, 0, _key_air_1_plus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 2, 1, _key_air_1_minus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 2, 2, _sw_air_1);
+    _sw_air_1->Bind(EPDGUI_Switch::EVENT_PRESSED, 2, key_home_air_state2_pressed_cb);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 3, 0, _key_air_1_plus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 3, 1, _key_air_1_minus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 3, 2, _sw_air_1);
+    _sw_air_1->Bind(EPDGUI_Switch::EVENT_RELEASED, 3, key_home_air_state3_released_cb);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 3, 0, _key_air_1_plus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 3, 1, _key_air_1_minus);
+    _sw_air_1->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 3, 2, _sw_air_1);
+    _sw_air_1->Bind(EPDGUI_Switch::EVENT_PRESSED, 3, key_home_air_state3_pressed_cb);
 
-    _sw_air_2->AddArgs(0, 0, _key_air_2_plus);
-    _sw_air_2->AddArgs(0, 1, _key_air_2_minus);
-    _sw_air_2->AddArgs(0, 2, _sw_air_2);
-    _sw_air_2->Bind(0, key_home_air_state0_cb);
-    _sw_air_2->AddArgs(1, 0, _key_air_2_plus);
-    _sw_air_2->AddArgs(1, 1, _key_air_2_minus);
-    _sw_air_2->AddArgs(1, 2, _sw_air_2);
-    _sw_air_2->Bind(1, key_home_air_state1_cb);
-    _sw_air_2->AddArgs(2, 0, _key_air_2_plus);
-    _sw_air_2->AddArgs(2, 1, _key_air_2_minus);
-    _sw_air_2->AddArgs(2, 2, _sw_air_2);
-    _sw_air_2->Bind(2, key_home_air_state2_cb);
-    _sw_air_2->AddArgs(3, 0, _key_air_2_plus);
-    _sw_air_2->AddArgs(3, 1, _key_air_2_minus);
-    _sw_air_2->AddArgs(3, 2, _sw_air_2);
-    _sw_air_2->Bind(3, key_home_air_state3_cb);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 0, 0, _key_air_2_plus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 0, 1, _key_air_2_minus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 0, 2, _sw_air_2);
+    _sw_air_2->Bind(EPDGUI_Switch::EVENT_RELEASED, 0, key_home_air_state0_released_cb);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 0, 0, _key_air_1_plus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 0, 1, _key_air_1_minus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 0, 2, _sw_air_1);
+    _sw_air_2->Bind(EPDGUI_Switch::EVENT_PRESSED, 0, key_home_air_state0_pressed_cb);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 1, 0, _key_air_2_plus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 1, 1, _key_air_2_minus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 1, 2, _sw_air_2);
+    _sw_air_2->Bind(EPDGUI_Switch::EVENT_RELEASED, 1, key_home_air_state1_released_cb);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 1, 0, _key_air_2_plus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 1, 1, _key_air_2_minus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 1, 2, _sw_air_2);
+    _sw_air_2->Bind(EPDGUI_Switch::EVENT_PRESSED, 1, key_home_air_state1_pressed_cb);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 2, 0, _key_air_2_plus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 2, 1, _key_air_2_minus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 2, 2, _sw_air_2);
+    _sw_air_2->Bind(EPDGUI_Switch::EVENT_RELEASED, 2, key_home_air_state2_released_cb);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 2, 0, _key_air_2_plus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 2, 1, _key_air_2_minus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 2, 2, _sw_air_2);
+    _sw_air_2->Bind(EPDGUI_Switch::EVENT_PRESSED, 2, key_home_air_state2_pressed_cb);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 3, 0, _key_air_2_plus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 3, 1, _key_air_2_minus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 3, 2, _sw_air_2);
+    _sw_air_2->Bind(EPDGUI_Switch::EVENT_RELEASED, 3, key_home_air_state3_released_cb);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 3, 0, _key_air_2_plus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 3, 1, _key_air_2_minus);
+    _sw_air_2->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 3, 2, _sw_air_2);
+    _sw_air_2->Bind(EPDGUI_Switch::EVENT_PRESSED, 3, key_home_air_state3_pressed_cb);
 
-    _sw_air_3->AddArgs(0, 0, _key_air_3_plus);
-    _sw_air_3->AddArgs(0, 1, _key_air_3_minus);
-    _sw_air_3->AddArgs(0, 2, _sw_air_3);
-    _sw_air_3->Bind(0, key_home_air_state0_cb);
-    _sw_air_3->AddArgs(1, 0, _key_air_3_plus);
-    _sw_air_3->AddArgs(1, 1, _key_air_3_minus);
-    _sw_air_3->AddArgs(1, 2, _sw_air_3);
-    _sw_air_3->Bind(1, key_home_air_state1_cb);
-    _sw_air_3->AddArgs(2, 0, _key_air_3_plus);
-    _sw_air_3->AddArgs(2, 1, _key_air_3_minus);
-    _sw_air_3->AddArgs(2, 2, _sw_air_3);
-    _sw_air_3->Bind(2, key_home_air_state2_cb);
-    _sw_air_3->AddArgs(3, 0, _key_air_3_plus);
-    _sw_air_3->AddArgs(3, 1, _key_air_3_minus);
-    _sw_air_3->AddArgs(3, 2, _sw_air_3);
-    _sw_air_3->Bind(3, key_home_air_state3_cb);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 0, 0, _key_air_3_plus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 0, 1, _key_air_3_minus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 0, 2, _sw_air_3);
+    _sw_air_3->Bind(EPDGUI_Switch::EVENT_RELEASED, 0, key_home_air_state0_released_cb);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 0, 0, _key_air_1_plus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 0, 1, _key_air_1_minus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 0, 2, _sw_air_1);
+    _sw_air_3->Bind(EPDGUI_Switch::EVENT_PRESSED, 0, key_home_air_state0_pressed_cb);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 1, 0, _key_air_3_plus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 1, 1, _key_air_3_minus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 1, 2, _sw_air_3);
+    _sw_air_3->Bind(EPDGUI_Switch::EVENT_RELEASED, 1, key_home_air_state1_released_cb);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 1, 0, _key_air_3_plus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 1, 1, _key_air_3_minus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 1, 2, _sw_air_3);
+    _sw_air_3->Bind(EPDGUI_Switch::EVENT_PRESSED, 1, key_home_air_state1_pressed_cb);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 2, 0, _key_air_3_plus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 2, 1, _key_air_3_minus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 2, 2, _sw_air_3);
+    _sw_air_3->Bind(EPDGUI_Switch::EVENT_RELEASED, 2, key_home_air_state2_released_cb);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 2, 0, _key_air_3_plus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 2, 1, _key_air_3_minus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 2, 2, _sw_air_3);
+    _sw_air_3->Bind(EPDGUI_Switch::EVENT_PRESSED, 2, key_home_air_state2_pressed_cb);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 3, 0, _key_air_3_plus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 3, 1, _key_air_3_minus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_RELEASED, 3, 2, _sw_air_3);
+    _sw_air_3->Bind(EPDGUI_Switch::EVENT_RELEASED, 3, key_home_air_state3_released_cb);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 3, 0, _key_air_3_plus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 3, 1, _key_air_3_minus);
+    _sw_air_3->AddArgs(EPDGUI_Switch::EVENT_PRESSED, 3, 2, _sw_air_3);
+    _sw_air_3->Bind(EPDGUI_Switch::EVENT_PRESSED, 3, key_home_air_state3_pressed_cb);
 
     if(language == LANGUAGE_JA)
     {
@@ -517,15 +598,4 @@ int Frame_Home::init(epdgui_args_vector_t &args)
         }
     }
     return 3;
-}
-
-int Frame_Home::run()
-{
-    if (check_long_press()){
-        if (cur_sw_air){
-            cur_sw_air->setState(3);
-            cur_sw_air->UpdateState(-1,-1);
-        }
-    }
-    return 1;
 }

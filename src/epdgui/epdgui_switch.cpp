@@ -89,6 +89,21 @@ void EPDGUI_Switch::Draw(M5EPD_Canvas* canvas)
     this->_canvas[_state]->pushToCanvas(_x, _y, canvas);
 }
 
+void EPDGUI_Switch::Bind(int16_t event, int16_t state, void (* func_cb)(epdgui_args_vector_t&))
+{
+    if(state > EPDGUI_SWITCH_MAX_STATE || state < 0)
+    {
+        return;
+    }
+    if (event == EVENT_PRESSED)
+    {
+        this->_pressed_func_cb_array[state] = func_cb;
+    } 
+    else if (event == EVENT_RELEASED)
+    {
+        this->_released_func_cb_array[state] = func_cb;
+    }
+}
 void EPDGUI_Switch::Bind(int16_t state, void (* func_cb)(epdgui_args_vector_t&))
 {
     if(state > EPDGUI_SWITCH_MAX_STATE || state < 0)
@@ -96,7 +111,7 @@ void EPDGUI_Switch::Bind(int16_t state, void (* func_cb)(epdgui_args_vector_t&))
         return;
     }
     
-    this->_func_cb_array[state] = func_cb;
+    this->_released_func_cb_array[state] = func_cb;
 }
 
 void EPDGUI_Switch::UpdateState(int16_t x, int16_t y)
@@ -114,6 +129,10 @@ void EPDGUI_Switch::UpdateState(int16_t x, int16_t y)
         {
             _event = EVENT_PRESSED;
             Draw();
+            if(this->_pressed_func_cb_array[_state] != NULL)
+            {
+                this->_pressed_func_cb_array[_state](this->_pressed_func_cb_param_array[_state]);
+            }
         }
     }
     else
@@ -128,9 +147,9 @@ void EPDGUI_Switch::UpdateState(int16_t x, int16_t y)
             }
 
             Draw();
-            if(this->_func_cb_array[_state] != NULL)
+            if(this->_released_func_cb_array[_state] != NULL)
             {
-                this->_func_cb_array[_state](this->_func_cb_param_array[_state]);
+                this->_released_func_cb_array[_state](this->_released_func_cb_param_array[_state]);
             }
         }
     }
@@ -151,19 +170,36 @@ int16_t EPDGUI_Switch::getState(void)
     return _state;
 }
 
-void EPDGUI_Switch::AddArgs(int16_t state, uint16_t n, void* arg)
+void EPDGUI_Switch::AddArgs(int16_t event, int16_t state, uint16_t n, void* arg)
 {
     if(state > EPDGUI_SWITCH_MAX_STATE || state < 0)
     {
         return;
     }
-    
-    if(this->_func_cb_param_array[state].size() > n)
+    if (event == EVENT_PRESSED)
     {
-        this->_func_cb_param_array[state][n] = arg;
-    }
-    else
+        if(this->_pressed_func_cb_param_array[state].size() > n)
+        {
+            this->_pressed_func_cb_param_array[state][n] = arg;
+        }
+        else
+        {
+            this->_pressed_func_cb_param_array[state].push_back(arg);
+        }
+    } 
+    else if (event == EVENT_RELEASED)
     {
-        this->_func_cb_param_array[state].push_back(arg);
-    }
+        if(this->_released_func_cb_param_array[state].size() > n)
+        {
+            this->_released_func_cb_param_array[state][n] = arg;
+        }
+        else
+        {
+            this->_released_func_cb_param_array[state].push_back(arg);
+        }
+    } 
+}
+void EPDGUI_Switch::AddArgs(int16_t state, uint16_t n, void* arg)
+{
+    AddArgs(EVENT_RELEASED, state, n, arg);
 }
