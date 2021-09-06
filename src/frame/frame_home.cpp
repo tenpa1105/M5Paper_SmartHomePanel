@@ -17,16 +17,22 @@ std::map<String, struct _ac_ctrl> ac_ctrl_init ={
 
 std::map<String, struct _ac_ctrl> ac_ctrl_current = ac_ctrl_init;
 
-struct _ac_loc_info{
+struct _loc_info{
  String maker;
  String ipaddr;
 };
 
 String loc_list[]={"liv", "baby", "bed"};
-std::map<String, struct _ac_loc_info> ac_loc_info ={
+std::map<String, struct _loc_info> ac_loc_info ={
   {loc_list[0], {"sharp",  "192.168.0.14"}},
   {loc_list[1], {"corona", "192.168.0.30"}},
   {loc_list[2], {"sharp",  "192.168.0.83"}},
+};
+
+std::map<String, struct _loc_info> light_loc_info ={
+  {loc_list[0], {"toshiba",  "192.168.0.83"}},
+  {loc_list[1], {"toshiba",  "192.168.0.83"}},
+  {loc_list[2], {"toshiba",  "192.168.0.83"}},
 };
 
 std::map<String, int> ac_mode_to_canvas = {
@@ -36,6 +42,41 @@ std::map<String, int> ac_mode_to_canvas = {
     {"heat", 3},
 };
 
+void light_control(EPDGUI_Switch &sw, String mode)
+{
+    String maker = "";
+    String ipaddr = "";
+    String found_loc= "";
+    for (auto loc : loc_list){
+        if (sw.GetCustomString().indexOf(loc)>=0){
+            maker = light_loc_info[loc].maker;
+            ipaddr = light_loc_info[loc].ipaddr;
+            found_loc = loc;
+            break;
+        } 
+    }
+    if (mode == "off"){
+        http.begin("http://"+ ipaddr + "/light_off?maker=" + maker);
+        http.GET();
+        http.end();     
+    }
+    else{
+        http.begin("http://"+ ipaddr + "/light_on?maker=" + maker);
+        http.GET();
+        http.end();     
+    }
+}
+
+void key_home_light_state0_cb(epdgui_args_vector_t &args)
+{
+    EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[0]));
+    light_control(*sw, "off");
+}
+void key_home_light_state1_cb(epdgui_args_vector_t &args)
+{
+    EPDGUI_Switch *sw = ((EPDGUI_Switch*)(args[0]));
+    light_control(*sw, "on");
+}
 void Frame_Home::InitSwitch(EPDGUI_Switch* sw, String title, String subtitle, const uint8_t *img1, const uint8_t *img2)
 {
     memcpy(sw->Canvas(0)->frameBuffer(), ImageResource_home_button_background_228x228, 228 * 228 / 2);
@@ -47,7 +88,12 @@ void Frame_Home::InitSwitch(EPDGUI_Switch* sw, String title, String subtitle, co
     memcpy(sw->Canvas(1)->frameBuffer(), sw->Canvas(0)->frameBuffer(), 228 * 228 / 2);
     sw->Canvas(0)->pushImage(68, 20, 92, 92, img1);
     sw->Canvas(1)->pushImage(68, 20, 92, 92, img2);
+    sw->AddArgs(0, 0, sw);
+    sw->Bind(0, key_home_light_state0_cb);
+    sw->AddArgs(1, 0, sw);
+    sw->Bind(1, key_home_light_state1_cb);
 }
+
 
 void ac_control(EPDGUI_Switch &sw, String mode, int temp)
 {
@@ -245,6 +291,9 @@ Frame_Home::Frame_Home(void)
     _key_air_3_plus  = new EPDGUI_Button(288 + 116, 604 + 72 + 184, 112, 44);
     _key_air_3_minus = new EPDGUI_Button(288, 604 + 72 + 184, 116, 44);
 
+    _sw_light1->SetCustomString("liv");
+    _sw_light2->SetCustomString("bed");
+    _sw_light3->SetCustomString("baby");
     _key_air_1_plus ->SetCustomString("1");
     _key_air_1_minus->SetCustomString("0");
     _key_air_2_plus ->SetCustomString("1");
